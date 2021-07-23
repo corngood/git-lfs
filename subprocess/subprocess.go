@@ -3,7 +3,7 @@
 package subprocess
 
 import (
-	"bufio"
+	// "bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -40,8 +40,8 @@ func BufferedExec(name string, args ...string) (*BufferedCmd, error) {
 	return &BufferedCmd{
 		cmd,
 		stdin,
-		bufio.NewReaderSize(stdout, stdoutBufSize),
-		bufio.NewReaderSize(stderr, stdoutBufSize),
+		stdout,
+		stderr,
 	}, nil
 }
 

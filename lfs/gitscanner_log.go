@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
+	// "io/ioutil"
 	"regexp"
 	"strings"
 	"time"
+	"os"
+	"sync"
 
 	"github.com/git-lfs/git-lfs/filepathfilter"
 	"github.com/git-lfs/git-lfs/git"
@@ -57,6 +59,7 @@ func scanUnpushed(cb GitScannerFoundPointer, remote string) error {
 	// Add standard search args to find lfs references
 	logArgs = append(logArgs, logLfsSearchArgs...)
 
+	fmt.Fprintln(os.Stderr, "Log", logArgs);
 	cmd, err := git.Log(logArgs...)
 	if err != nil {
 		return err
@@ -129,23 +132,65 @@ func scanStashed(cb GitScannerFoundPointer, s *GitScanner) error {
 
 func parseScannerLogOutput(cb GitScannerFoundPointer, direction LogDiffDirection, cmd *subprocess.BufferedCmd) {
 	ch := make(chan gitscannerResult, chanBufSize)
+	fmt.Fprintln(os.Stderr, "+parseScannerLogOutput");
+	defer fmt.Fprintln(os.Stderr, "-parseScannerLogOutput");
+
+	var stderr string
+	var taskwait sync.WaitGroup
+	taskwait.Add(1);
+	go func() {
+		defer taskwait.Done()
+		fmt.Fprintln(os.Stderr, "+stderr");
+
+		buf := make([]byte, 1024)
+		for {
+			n, err := cmd.Stderr.Read(buf)
+			fmt.Fprintln(os.Stderr, "stderr", n, err, string(buf[:n]))
+			if n == 0 { break }
+		}
+
+		// stderr, err := io.ReadAll(cmd.Stderr)
+
+		fmt.Fprintln(os.Stderr, "-stderr", stderr);
+		// cmd.Stderr.Close()
+	}()
 
 	go func() {
+		// cmd.Stdin.Close()
 		scanner := newLogScanner(direction, cmd.Stdout)
+		fmt.Fprintln(os.Stderr, "+scanner");
 		for scanner.Scan() {
+			// fmt.Fprintln(os.Stderr, "+scan");
 			if p := scanner.Pointer(); p != nil {
-				ch <- gitscannerResult{Pointer: p}
+				res := gitscannerResult{Pointer: p}
+				// fmt.Fprintln(os.Stderr, "scan", res);
+				ch <- res
 			}
+			// fmt.Fprintln(os.Stderr, "-scan");
 		}
-		stderr, _ := ioutil.ReadAll(cmd.Stderr)
-		err := cmd.Wait()
+
+		if err := scanner.Err(); err != nil {
+			ch <- gitscannerResult{Err: fmt.Errorf("scanner failed: %v", err)}
+		}
+
+		stdout, err := io.ReadAll(cmd.Stdout)
+		fmt.Fprintf(os.Stderr, "Out %s\n", stdout);
+
+		fmt.Fprintln(os.Stderr, "-scanner");
+		// stderr, _ := ioutil.ReadAll(cmd.Stderr)
+		// cmd.Stdout.Close()
+
+		taskwait.Wait()
+
+		fmt.Fprintln(os.Stderr, "+Wait");
+		err = cmd.Wait()
+		fmt.Fprintln(os.Stderr, "-Wait", err);
 		if err != nil {
 			ch <- gitscannerResult{Err: fmt.Errorf("error in git log: %v %v", err, string(stderr))}
 		}
 		close(ch)
 	}()
 
-	cmd.Stdin.Close()
 	for result := range ch {
 		cb(result.Pointer, result.Err)
 	}
@@ -287,15 +332,20 @@ func (s *logScanner) scan() (*WrappedPointer, bool) {
 				return nil, false
 			}
 
+			// fmt.Fprintln(os.Stderr, "ReadLine", string(bytes), prefix, err, long);
+
 			if prefix {
 				long = true
 			} else if !long {
 				line = string(bytes)
 				break
 			} else {
+				fmt.Fprintln(os.Stderr, "skipping long line ending with: ", string(bytes));
 				long = false
 			}
 		}
+
+		// fmt.Fprintln(os.Stderr, "Text", line);
 
 		if match := s.commitHeaderRegex.FindStringSubmatch(line); match != nil {
 			// Currently we're not pulling out commit groupings, but could if we wanted

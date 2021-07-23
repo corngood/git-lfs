@@ -119,7 +119,11 @@ func prune(fetchPruneConfig lfs.FetchPruneConfig, verifyRemote, dryRun, verbose 
 	progresswait.Add(1)
 	go pruneTaskDisplayProgress(progressChan, &progresswait, logger)
 
+	fmt.Fprintln(os.Stderr, "WAIT\n");
+
 	taskwait.Wait() // wait for subtasks
+
+	fmt.Fprintln(os.Stderr, "DONE\n");
 	gitscanner.Close()
 	close(retainChan) // triggers retain collector to end now all tasks have
 	retainwait.Wait() // make sure all retained objects added
@@ -280,6 +284,7 @@ func pruneTaskCollectRetained(outRetainedObjects *tools.StringSet, retainChan ch
 	defer retainwait.Done()
 
 	for oid := range retainChan {
+		// fmt.Fprintln(os.Stderr, "retain", oid);
 		if outRetainedObjects.Add(oid) {
 			progressChan <- PruneProgress{PruneProgressTypeRetain, 1}
 		}
@@ -323,6 +328,8 @@ func pruneDeleteFiles(prunableObjects []string, logger *tasklog.Logger) {
 
 // Background task, must call waitg.Done() once at end
 func pruneTaskGetLocalObjects(outLocalObjects *[]fs.Object, progChan PruneProgressChan, waitg *sync.WaitGroup) {
+	fmt.Fprintln(os.Stderr, "+pruneTaskGetLocalObjects\n");
+	defer fmt.Fprintln(os.Stderr, "-pruneTaskGetLocalObjects\n");
 	defer waitg.Done()
 
 	cfg.EachLFSObject(func(obj fs.Object) error {
@@ -334,7 +341,10 @@ func pruneTaskGetLocalObjects(outLocalObjects *[]fs.Object, progChan PruneProgre
 
 // Background task, must call waitg.Done() once at end
 func pruneTaskGetRetainedAtRef(gitscanner *lfs.GitScanner, ref string, retainChan chan string, errorChan chan error, waitg *sync.WaitGroup, sem *semaphore.Weighted) {
+	fmt.Fprintln(os.Stderr, "+pruneTaskGetRetainedAtRef\n");
+	defer fmt.Fprintln(os.Stderr, "-pruneTaskGetRetainedAtRef\n");
 	sem.Acquire(context.Background(), 1)
+	fmt.Fprintln(os.Stderr, "++pruneTaskGetRetainedAtRef\n");
 	defer sem.Release(1)
 	defer waitg.Done()
 
@@ -356,7 +366,10 @@ func pruneTaskGetRetainedAtRef(gitscanner *lfs.GitScanner, ref string, retainCha
 
 // Background task, must call waitg.Done() once at end
 func pruneTaskGetPreviousVersionsOfRef(gitscanner *lfs.GitScanner, ref string, since time.Time, retainChan chan string, errorChan chan error, waitg *sync.WaitGroup, sem *semaphore.Weighted) {
+	fmt.Fprintln(os.Stderr, "+pruneTaskGetPreviousVersionsOfRef\n");
+	defer fmt.Fprintln(os.Stderr, "-pruneTaskGetPreviousVersionsOfRef\n");
 	sem.Acquire(context.Background(), 1)
+	fmt.Fprintln(os.Stderr, "++pruneTaskGetPreviousVersionsOfRef\n");
 	defer sem.Release(1)
 	defer waitg.Done()
 
@@ -379,6 +392,9 @@ func pruneTaskGetPreviousVersionsOfRef(gitscanner *lfs.GitScanner, ref string, s
 
 // Background task, must call waitg.Done() once at end
 func pruneTaskGetRetainedCurrentAndRecentRefs(gitscanner *lfs.GitScanner, fetchconf lfs.FetchPruneConfig, retainChan chan string, errorChan chan error, waitg *sync.WaitGroup, sem *semaphore.Weighted) {
+	fmt.Fprintln(os.Stderr, "+pruneTaskGetRetainedCurrentAndRecentRefs\n");
+	defer fmt.Fprintln(os.Stderr, "-pruneTaskGetRetainedCurrentAndRecentRefs\n");
+
 	defer waitg.Done()
 
 	// We actually increment the waitg in this func since we kick off sub-goroutines
@@ -435,10 +451,14 @@ func pruneTaskGetRetainedCurrentAndRecentRefs(gitscanner *lfs.GitScanner, fetchc
 
 // Background task, must call waitg.Done() once at end
 func pruneTaskGetRetainedUnpushed(gitscanner *lfs.GitScanner, fetchconf lfs.FetchPruneConfig, retainChan chan string, errorChan chan error, waitg *sync.WaitGroup, sem *semaphore.Weighted) {
+	fmt.Fprintln(os.Stderr, "+pruneTaskGetRetainedUnpushed\n");
+	defer fmt.Fprintln(os.Stderr, "-pruneTaskGetRetainedUnpushed\n");
+
 	defer waitg.Done()
 
 	err := gitscanner.ScanUnpushed(fetchconf.PruneRemoteName, func(p *lfs.WrappedPointer, err error) {
 		if err != nil {
+			tracerx.Printf("ERR");
 			errorChan <- err
 		} else {
 			retainChan <- p.Pointer.Oid
@@ -454,6 +474,8 @@ func pruneTaskGetRetainedUnpushed(gitscanner *lfs.GitScanner, fetchconf lfs.Fetc
 
 // Background task, must call waitg.Done() once at end
 func pruneTaskGetRetainedWorktree(gitscanner *lfs.GitScanner, fetchconf lfs.FetchPruneConfig, retainChan chan string, errorChan chan error, waitg *sync.WaitGroup, sem *semaphore.Weighted) {
+	fmt.Fprintln(os.Stderr, "+pruneTaskGetRetainedWorktree\n");
+	defer fmt.Fprintln(os.Stderr, "-pruneTaskGetRetainedWorktree\n");
 	defer waitg.Done()
 
 	if fetchconf.PruneForce {
@@ -489,6 +511,9 @@ func pruneTaskGetRetainedWorktree(gitscanner *lfs.GitScanner, fetchconf lfs.Fetc
 
 // Background task, must call waitg.Done() once at end
 func pruneTaskGetRetainedStashed(gitscanner *lfs.GitScanner, retainChan chan string, errorChan chan error, waitg *sync.WaitGroup, sem *semaphore.Weighted) {
+	fmt.Fprintln(os.Stderr, "+pruneTaskGetRetainedStashed\n");
+	defer fmt.Fprintln(os.Stderr, "-pruneTaskGetRetainedStashed\n");
+
 	defer waitg.Done()
 
 	err := gitscanner.ScanStashed(func(p *lfs.WrappedPointer, err error) {
@@ -508,6 +533,9 @@ func pruneTaskGetRetainedStashed(gitscanner *lfs.GitScanner, retainChan chan str
 
 // Background task, must call waitg.Done() once at end
 func pruneTaskGetReachableObjects(gitscanner *lfs.GitScanner, outObjectSet *tools.StringSet, errorChan chan error, waitg *sync.WaitGroup, sem *semaphore.Weighted) {
+	fmt.Fprintln(os.Stderr, "+pruneTaskGetReachableObjects\n");
+	defer fmt.Fprintln(os.Stderr, "-pruneTaskGetReachableObjects\n");
+
 	defer waitg.Done()
 
 	err := gitscanner.ScanAll(func(p *lfs.WrappedPointer, err error) {

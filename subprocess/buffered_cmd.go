@@ -1,7 +1,7 @@
 package subprocess
 
 import (
-	"bufio"
+	// "bufio"
 	"io"
 )
 
@@ -14,6 +14,6 @@ type BufferedCmd struct {
 	*Cmd
 
 	Stdin  io.WriteCloser
-	Stdout *bufio.Reader
-	Stderr *bufio.Reader
+	Stdout io.ReadCloser
+	Stderr io.ReadCloser
 }

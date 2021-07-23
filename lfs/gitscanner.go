@@ -3,6 +3,7 @@ package lfs
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -216,6 +217,7 @@ func (s *GitScanner) ScanUnpushed(remote string, cb GitScannerFoundPointer) erro
 	if err != nil {
 		return err
 	}
+	fmt.Fprintln(os.Stderr, "scanUnpushed\n");
 	return scanUnpushed(callback, remote)
 }
 
