@@ -1041,3 +1041,31 @@ begin_test "prune does not invoke external diff programs"
   git lfs prune
 )
 end_test
+
+begin_test "prune doesn't hang on lone lines in diff"
+(
+    set -e
+
+    reponame="prune_longlines"
+    git init "$reponame"
+    cd "$reponame"
+
+    git lfs track "*.dat" 2>&1 | tee track.log
+    grep "Tracking \"\*.dat\"" track.log
+
+    head -c $((128*1024)) /dev/zero | tr '\0' 'A' > test.dat
+    git add .gitattributes test.dat
+
+    git commit -m tracked
+
+    git lfs untrack "*.dat" 2>&1 | tee untrack.log
+    grep "Untracking \"\*.dat\"" untrack.log
+
+    head -c $((128*1024)) /dev/zero | tr '\0' 'A' > test.dat
+    git add .gitattributes test.dat
+
+    git commit -m untracked
+
+    git lfs prune
+)
+end_test
